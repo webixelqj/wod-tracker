@@ -1,0 +1,19 @@
+# Flutter
+.dart_tool/
+build/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+*.iml
+.idea/
+.vscode/
+
+# Dossiers natifs : générés par GitHub Actions (flutter create + tool/patch_android.py).
+# Retire ces lignes le jour où tu veux les personnaliser à la main.
+/android/
+/ios/
+/web/
+/linux/
+/macos/
+/windows/

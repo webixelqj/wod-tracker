@@ -1,0 +1,35 @@
+name: wod_tracker
+description: Carnet personnel de WOD et de records (MVP).
+publish_to: 'none'
+version: 0.3.0+3
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  shared_preferences: ^2.3.2
+  image_picker: ^1.1.2
+  http: ^1.2.2
+  intl: '>=0.19.0 <1.0.0'
+  health: '>=11.0.0 <14.0.0'
+  exif: ^3.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.1
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/images/icon.png"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
