@@ -1,14 +1,24 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/movement_library.dart';
 import '../models/wod.dart';
 
+/// Erreur lisible par l'utilisateur.
+class AiError implements Exception {
+  final String message;
+  const AiError(this.message);
+  @override
+  String toString() => message;
+}
+
 /// Envoie la photo du tableau à l'API Claude et récupère une séance structurée.
 /// La photo n'est jamais conservée : seul le résultat est enregistré.
 class AiService {
   static const _endpoint = 'https://api.anthropic.com/v1/messages';
-  static const _model = 'claude-sonnet-4-5'; // à ajuster selon les modèles disponibles
+  /// Modèles essayés dans l'ordre (le premier disponible est utilisé).
+  static const _models = ['claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-5-5'];
   final String apiKey;
   AiService(this.apiKey);
 
@@ -42,45 +52,79 @@ Règles :
     final bytes = await image.readAsBytes();
     final mediaType =
         image.path.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-    final res = await http.post(
-      Uri.parse(_endpoint),
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: jsonEncode({
-        'model': _model,
-        'max_tokens': 3000,
-        'messages': [
-          {
-            'role': 'user',
-            'content': [
-              {
-                'type': 'image',
-                'source': {
-                  'type': 'base64',
-                  'media_type': mediaType,
-                  'data': base64Encode(bytes)
-                }
+    final body = <String, dynamic>{
+      'max_tokens': 3000,
+      'messages': [
+        {
+          'role': 'user',
+          'content': [
+            {
+              'type': 'image',
+              'source': {'type': 'base64', 'media_type': mediaType, 'data': base64Encode(bytes)}
+            },
+            {'type': 'text', 'text': _prompt},
+          ]
+        }
+      ]
+    };
+
+    http.Response? res;
+    try {
+      // Si un modèle n'est plus disponible (404), on essaie le suivant.
+      for (final model in _models) {
+        res = await http
+            .post(
+              Uri.parse(_endpoint),
+              headers: {
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01',
+                'content-type': 'application/json',
               },
-              {'type': 'text', 'text': _prompt},
-            ]
-          }
-        ]
-      }),
-    );
-    if (res.statusCode != 200) {
-      throw Exception('Erreur API (${res.statusCode}) : ${res.body}');
+              body: jsonEncode({...body, 'model': model}),
+            )
+            .timeout(const Duration(seconds: 90));
+        if (res.statusCode != 404) break;
+      }
+    } on SocketException {
+      throw const AiError('Pas de connexion internet. Réessaie quand tu as du réseau.');
+    } on TimeoutException {
+      throw const AiError("L'IA met trop de temps à répondre. Réessaie dans un instant.");
     }
-    final data = jsonDecode(utf8.decode(res.bodyBytes));
+
+    final r = res!;
+    if (r.statusCode != 200) throw AiError(_friendly(r));
+    final data = jsonDecode(utf8.decode(r.bodyBytes));
     final text = (data['content'] as List)
         .where((c) => c['type'] == 'text')
         .map((c) => c['text'])
         .join();
     final s = text.indexOf('{'), e = text.lastIndexOf('}');
-    if (s < 0 || e < 0) throw Exception('Réponse illisible');
+    if (s < 0 || e < 0) {
+      throw const AiError("Le tableau n'a pas pu être lu. Reprends la photo de plus près, bien de face.");
+    }
     return _toWod(jsonDecode(text.substring(s, e + 1)), date);
+  }
+
+  /// Traduit les erreurs de l'API en messages compréhensibles.
+  static String _friendly(http.Response r) {
+    var msg = '';
+    try {
+      msg = (jsonDecode(utf8.decode(r.bodyBytes))['error']?['message'] ?? '').toString();
+    } catch (_) {}
+    final low = msg.toLowerCase();
+    if (r.statusCode == 401) {
+      return 'Clé API refusée. Vérifie la clé copiée dans les Réglages.';
+    }
+    if (low.contains('credit') || low.contains('billing') || r.statusCode == 402) {
+      return 'Crédit API épuisé. Ajoute du crédit dans la Claude Console (Billing).';
+    }
+    if (r.statusCode == 429 || r.statusCode == 529) {
+      return "L'IA est très sollicitée. Réessaie dans une minute.";
+    }
+    if (r.statusCode == 404) {
+      return "Aucun modèle d'IA disponible pour ta clé. Envoie ce message à Claude : $msg";
+    }
+    return 'Erreur ${r.statusCode} : $msg';
   }
 
   static double? _n(dynamic v) => v is num ? v.toDouble() : null;

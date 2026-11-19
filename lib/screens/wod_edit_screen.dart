@@ -108,7 +108,7 @@ class _WodEditScreenState extends State<WodEditScreen> {
               ? 'Photo du ${fmtShortDate(date)} lue : la séance reprend sa date.'
               : 'Tableau lu : vérifie-le, puis passe à ton résultat.');
     } catch (e) {
-      if (mounted) showInfo(context, 'Lecture impossible : $e');
+      if (mounted) showInfo(context, e is AiError ? e.message : 'Lecture impossible : $e');
     } finally {
       // On supprime la copie de l'appareil photo, jamais l'original de la galerie.
       if (source == ImageSource.camera) {
